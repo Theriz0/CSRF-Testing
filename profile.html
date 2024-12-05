@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Send Request</title>
+</head>
+<body>
+    <form id="myForm">
+        <label for="textInput">Change Email</label>
+        <input type="text" id="textInput" name="textInput">
+        <button type="button" onclick="sendRequestSafe()">Change Profile Email Vulnerable</button>
+        <button type="button" onclick="sendRequestVulnerable()">Change Profile Email Safe</button>
+        <button type="button" onclick="getProfileEmail()">Get Profile Emaile</button>
+        <p id="emailText">Email: </p>
+
+    </form>
+
+    <script>
+
+        let csrfToken
+        
+
+        (function() {
+            id = "1"
+            headers = new Headers()
+            headers.append("Content-Type", "application/json")
+
+            // Set csrfToken on page load
+            fetch('http://127.0.0.1:8000/generate-csrf', {
+                method:"POST",
+                body: JSON.stringify({
+                            "id": id
+                        }),
+                headers: headers,
+            })
+            .then(async (response)=>{await response.json().then((body)=>{csrfToken=body['csrfToken']})})
+            .catch((e)=>{console.log(e)})
+        })()
+
+        async function sendRequestSafe() {
+            const headers = new Headers()
+            const emailInput = document.getElementById("textInput").value
+            id = "1"
+
+            headers.append("Content-Type", "application/json")
+            headers.append("csrf-token",csrfToken)
+
+
+            await fetch(
+                'http://127.0.0.1:8000/profile/change-email-safe',
+                {
+                    method:"POST",
+                    body: JSON.stringify({
+                        "email": emailInput,
+                    }),
+                    headers:headers
+                }
+            )
+        }
+        
+        function sendRequestVulnerable() {
+            const headers = new Headers()
+            headers.append("Content-Type", "application/json")
+
+            const emailInput = document.getElementById("textInput").value
+
+            fetch(
+                'http://127.0.0.1:8000/profile/change-email-vulnerable',
+                {
+                    method:"POST",
+                    body: JSON.stringify({
+                        "email": emailInput,
+                    }),
+                    headers:headers
+                }
+            )
+        }
+
+        function getProfileEmail(){
+             fetch(
+                'http://127.0.0.1:8000/profile/account-email',
+                {
+                    method:"GET",
+                    headers:headers
+                }
+            )
+            .then(async (response)=>{await response.json().then((body)=>{document.getElementById("emailText").innerHTML = `Email: ${body}`})})
+        }
+    </script>
+</body>
+</html>

