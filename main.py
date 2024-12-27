@@ -1,76 +1,131 @@
-from flask import Flask, request, jsonify, send_file
-import os
-import hashlib
+from fastapi import FastAPI, Response, Request
+from pydantic import BaseModel
+from uuid import uuid4
+from fastapi.responses import HTMLResponse
+from my_jwt import generate_jwt, validate_jwt, get_jwt
 
-app = Flask(__name__)
+class GenerateCSRFBody(BaseModel):
+    id:str
 
-# Simulated session storage for CSRF tokens
-session = {}
+class GenerateJWTBody(BaseModel):
+    id:str
 
-# Generate CSRF token
-def generate_csrf_token():
-    # Generate a random token using os.urandom and hash it
-    return hashlib.sha256(os.urandom(64)).hexdigest()
+csrfTracker = {}
 
-# Assign CSRF token to a user
-def assign_csrf_token(user_id):
-    token = generate_csrf_token()
-    session[user_id] = token
-    return token
+accountDB = {
+    '1':{
+        'email':'theriz0@gmail.com'
+    }
+}
 
-# Validate CSRF token
-def validate_csrf_token(user_id, submitted_token):
-    stored_token = session.get(user_id)
-    return stored_token == submitted_token
+app = FastAPI()
 
-# Simulated user data
-users = {"1": {"email": "user@example.com"}}
+# Get Account Email based on ID in JWT
+@app.get("/profile/account-email")
+async def account_email(request:Request, response:Response):
+    _jwt = request.headers.get('cookie').split("=")[1]
+    if validate_jwt(_jwt):
+        id = get_jwt(_jwt)
+        if(id in accountDB):
+            return accountDB[id]['email']
 
-@app.route('/profile')
-def profile():
-    return send_file('profile.html')
+# Generate CSRF Token and store in CSRF Tracker
+@app.post("/generate-csrf")
+async def generate_csrf(generateCSRFBody: GenerateCSRFBody):
+    csrfToken = uuid4()
+    csrfTracker[generateCSRFBody.id] = {"csrfToken":str(csrfToken)}
+    return({"csrfToken":str(csrfToken)})
 
-@app.route('/malicious')
-def malicious():
-    return send_file('malicious.html')
+# Change Email without CSRF Token
+@app.post("/profile/change-email-vulnerable")
+async def change_email_vulnerable(request:Request, response:Response):
+    response.headers.append("Access-Control-Allow-Origin","*")
 
-@app.route('/generate-csrf', methods=['POST'])
-def generate_csrf():
-    data = request.json
-    user_id = data.get("id")
-    if user_id not in users:
-        return jsonify({"error": "User not found"}), 404
-    token = assign_csrf_token(user_id)
-    return jsonify({"csrfToken": token})
+    if (request.headers['content-type'] == 'application/x-www-form-urlencoded'):
+        body = await request.body()
+        decoded_body = body.decode()
+        email = decoded_body.split("=")[1]
 
-@app.route('/profile/change-email-vulnerable', methods=['POST'])
-def change_email_vulnerable():
-    data = request.json
-    user_id = "1"  # Simulated logged-in user
-    email = data.get("email")
-    if user_id in users:
-        users[user_id]["email"] = email
-        return jsonify({"message": "Email changed successfully (vulnerable)."})
-    return jsonify({"error": "User not found"}), 404
+    elif (request.headers['content-type'] == 'application/json'):
+        body = await request.json()
+        email = body['email']
 
-@app.route('/profile/change-email-safe', methods=['POST'])
-def change_email_safe():
-    data = request.json
-    user_id = "1"  # Simulated logged-in user
-    email = data.get("email")
-    csrf_token = request.headers.get("csrf-token")
-    if validate_csrf_token(user_id, csrf_token):
-        if user_id in users:
-            users[user_id]["email"] = email
-            return jsonify({"message": "Email changed successfully (safe)."})
-    return jsonify({"error": "Invalid CSRF token"}), 403
+    else:
+        response.status_code = 400
+        return "Unaccepted content-type"
+    
+    _jwt = request.headers.get('cookie').split("=")[1]
 
-@app.route('/profile/account-email', methods=['GET'])
-def account_email():
-    user_id = "1"  # Simulated logged-in user
-    if user_id in users:
-        return jsonify(users[user_id]["email"])
-    return jsonify({"error": "User not found"}), 404
+    if validate_jwt(_jwt):
+        id = get_jwt(_jwt)
+        if(id in accountDB):
+            accountDB[id]['email'] = email
+        else:
+            response.status_code = 418
+            return "Im a teapot"
+    else:
+        response.status_code = 401
+        return "invalid jwt"
 
-if __name__ == '__main__':
-    app.run(debug=True)
+@app.post("/profile/change-email-safe")
+async def change_email_safe(request:Request, response: Response):
+
+    if (request.headers['content-type'] == 'application/x-www-form-urlencoded'):
+        body = await request.body()
+        decoded_body = body.decode()
+        email = decoded_body.split("=")[1]
+
+    elif (request.headers['content-type'] == 'application/json'):
+        body = await request.json()
+        email = body['email']
+
+    else:
+        response.status_code = 400
+        return "Unaccepted content-type"
+    
+    _jwt = request.headers.get('cookie').split("=")[1]
+
+    # Validate JWT hasn't been tampered with
+    if validate_jwt(_jwt):
+        id = get_jwt(_jwt)
+
+        csrf_token = request.headers.get('csrf-token')
+
+        # Validate id has a CSRF Token and that the id's token matches what is sent in the headers.
+        if (id in csrfTracker and csrf_token == csrfTracker[id]["csrfToken"]):
+            if(id in accountDB):
+                accountDB[id]['email'] = email
+            else:
+                response.status_code = 418
+                return "Im a teapot"
+            return "1"
+        else:
+            response.status_code = 418
+            return "Im a teapot - CSRF PREVENTION"
+        
+    else:
+        response.status_code = 401
+        return "invalid jwt"
+    
+@app.options("/profile/change-email-safe")
+async def cors_pre_flight(response:Response):
+    response.headers.append("Access-Control-Allow-Origin","*")
+    response.headers.append("Access-Control-Allow-Methods", "POST")
+    response.headers.append("Access-Control-Allow-Headers", "content-type")
+    return
+
+# Returns Profile.html + injects _jwt cookie into the browser on page load 
+@app.get("/profile", response_class=HTMLResponse)
+async def profile(response: Response):
+    with open("./profile.html", 'r') as file:
+        profileHTML = file.read()
+
+    jwt = generate_jwt()
+    print(jwt)
+
+    # samesite="none" -> browser sends the cookie with both cross-site and same-site requests.
+    # samesite="lax" -> cookie is not sent on cross-site requests, such as on requests to load images or frames,
+    # samesite="strict" ->  browser sends the cookie only for same-site requests, that is, requests originating from the same site that set the cookie
+    # secure indicates that the cookie is sent to the server only when a request is made with the https:
+    response.set_cookie(key="_jwt", value=jwt, samesite="none", secure=True)
+    return profileHTML
