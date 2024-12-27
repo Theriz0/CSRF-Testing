@@ -1,10 +1,12 @@
 # CSRF-Testing
 
 Python packages installation: 
+
 python -m pip install jwt   
 python -m pip install fastapi
 
 Running the application in dev environment:
+
 fastapi dev main.py 
 
 Flowchart for updating a Profile's Email in the database:
